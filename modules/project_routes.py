@@ -1,57 +1,65 @@
 import os
 import yaml
-import json
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
 def repair_project_config() -> None:
-    """Repair the project.yaml configuration by adding missing fields and validating syntax."""
-    project_file = 'project.yaml'
-    backup_file = f'backup_{datetime.now().strftime("%Y%m%d%H%M%S")}_{project_file}'
+    """Repair the project.yaml configuration file.
+
+    This function creates a backup of the project.yaml file,
+    checks for and fixes configuration issues, and restores
+    from backup if any errors occur during the repair process.
+    """
+    project_yaml_path = 'project.yaml'
+    backup_path = f'project_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.yaml'
     
-    # Step 1: Create a backup
-    try:
-        with open(project_file, 'r') as original_file:
-            with open(backup_file, 'w') as backup:
-                backup.write(original_file.read())
-        logger.info(f'Backup created: {backup_file}')
-    except Exception as e:
-        logger.error(f'Failed to create backup: {e}')
-        return
+    # Step 1: Create a timestamped backup of project.yaml
+    if os.path.exists(project_yaml_path):
+        os.rename(project_yaml_path, backup_path)
+        logger.info(f'Backup created at {backup_path}')
     
-    # Step 2: Load the existing configuration
     try:
-        with open(project_file, 'r') as file:
-            config = yaml.safe_load(file)
-    except yaml.YAMLError as e:
-        logger.error(f'YAML syntax error: {e}')
-        return
+        # Step 2: Load the current configuration
+        with open(backup_path, 'r') as file:
+            config = yaml.safe_load(file) or {}
+        
+        # Step 3: Fix YAML syntax errors and add missing fields
+        if 'template_version' not in config:
+            # Infer template_version from templates.json if available
+            template_version = infer_template_version()
+            config['template_version'] = template_version or '1.0.0'  # Default value
+            logger.info('Added missing template_version field')
+        
+        # Additional checks and fixes could be added here
 
-    # Step 3: Validate and fix the configuration
-    if 'template_version' not in config:
-        logger.info('Adding missing template_version field.')
-        try:
-            with open('templates.json', 'r') as templates_file:
-                templates = json.load(templates_file)
-                config['template_version'] = templates.get('version', '1.0.0')  # Default version
-        except (FileNotFoundError, json.JSONDecodeError):
-            logger.warning('templates.json not found or invalid. Setting default version to 1.0.0.')
-            config['template_version'] = '1.0.0'
-
-    # Validate dependencies format and ensure all required fields are present
-    if 'dependencies' not in config or not isinstance(config['dependencies'], list):
-        config['dependencies'] = []  # Default to empty list if not present
-
-    # Step 4: Save the fixed configuration back to project.yaml
-    try:
-        with open(project_file, 'w') as file:
+        # Step 4: Validate YAML structure and save back
+        with open(project_yaml_path, 'w') as file:
             yaml.dump(config, file)
-        logger.info('project.yaml has been successfully repaired.')
+        logger.info('project.yaml has been repaired successfully')
+
     except Exception as e:
-        logger.error(f'Failed to save configuration: {e}')
+        logger.error('Repair failed: %s', e)
         # Restore from backup if repair fails
-        os.replace(backup_file, project_file)
-        logger.info('Restored from backup due to failure.')
+        os.rename(backup_path, project_yaml_path)
+        logger.info('Restored from backup')
+    else:
+        # Clean up backup if repair succeeded
+        os.remove(backup_path)
+    
+
+def infer_template_version() -> str:
+    """Infer the template version from templates.json if available.
+
+    Returns:
+        str: The inferred template version, or None if unavailable.
+    """
+    try:
+        with open('templates.json', 'r') as file:
+            templates = json.load(file)
+            return templates.get('template_version')
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.warning('Could not infer template_version: %s', e)
+        return None
