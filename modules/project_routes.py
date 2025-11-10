@@ -1,72 +1,68 @@
 import os
+import shutil
 import yaml
-import logging
-from datetime import datetime
+import datetime
 from typing import Dict, Any
 
-# Initialize logger
-logger = logging.getLogger(__name__)
+def repair_project_config(file_path: str, templates_path: str) -> None:
+    """Repair the project.yaml configuration file.
 
-def repair_project_config() -> None:
-    """Repair the project.yaml configuration file."""
-    project_yaml_path = 'project.yaml'
-    backup_path = f'project_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.yaml'
-    
-    # Step 1: Create a backup of project.yaml
-    try:
-        with open(project_yaml_path, 'r') as original_file:
-            with open(backup_path, 'w') as backup_file:
-                backup_file.write(original_file.read())
-        logger.info(f"Backup created at {backup_path}")
-    except Exception as e:
-        logger.error(f"Failed to create backup: {e}")
-        return
+    This function will create a backup, fix any issues, and ensure that all required fields are present.
 
-    # Step 2: Load the existing project.yaml
+    Args:
+        file_path (str): Path to the project.yaml file.
+        templates_path (str): Path to the templates.json file.
+    """
+    # Step 1: Create a timestamped backup
+    backup_path = f"{file_path}.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
+    shutil.copy(file_path, backup_path)
+
     try:
-        with open(project_yaml_path, 'r') as file:
+        # Step 2: Load the existing configuration
+        with open(file_path, 'r') as file:
             config = yaml.safe_load(file) or {}
-    except yaml.YAMLError as e:
-        logger.error(f"YAML syntax error: {e}")
-        return
-    
-    # Step 3: Validate and set required fields
-    if 'template_version' not in config:
-        config['template_version'] = infer_template_version()
-        logger.info("Added missing 'template_version' field.")
-    
-    # Step 4: Validate dependencies are properly formatted
-    validate_dependencies(config.get('dependencies', {}))
 
-    # Step 5: Write the updated config back to project.yaml
-    try:
-        with open(project_yaml_path, 'w') as file:
+        # Step 3: Fix YAML errors and add missing fields
+        if 'template_version' not in config:
+            config['template_version'] = infer_template_version(templates_path)
+
+        # Step 4: Validate and reformat dependencies if needed
+        validate_dependencies(config)
+
+        # Step 5: Write the fixed configuration back to project.yaml
+        with open(file_path, 'w') as file:
             yaml.dump(config, file)
-        logger.info("project.yaml updated successfully.")
+
     except Exception as e:
-        logger.error(f"Failed to write to project.yaml: {e}")
-        # Step 6: Restore from backup if repair fails
-        restore_backup(backup_path, project_yaml_path)
-        return
+        # Restore from backup if repair fails
+        shutil.copy(backup_path, file_path)
+        raise
 
-def infer_template_version() -> str:
-    """Infer template_version from templates.json if available."""
-    # Logic to read templates.json (if available) and return template version
-    # Placeholder for actual implementation
-    return "1.0.0"  # Default version
+def infer_template_version(templates_path: str) -> str:
+    """Infer the template version from the templates.json file if available.
 
-def validate_dependencies(dependencies: Dict[str, Any]) -> None:
-    """Validate that dependencies are properly formatted."""
-    for dep_name, dep_version in dependencies.items():
-        if not isinstance(dep_name, str) or not isinstance(dep_version, str):
-            logger.error(f"Invalid dependency format: {dep_name}: {dep_version}")
+    Args:
+        templates_path (str): Path to the templates.json file.
 
-def restore_backup(backup_path: str, original_path: str) -> None:
-    """Restore the original project.yaml from backup."""
+    Returns:
+        str: The inferred template version or a default value.
+    """
     try:
-        with open(backup_path, 'r') as backup_file:
-            with open(original_path, 'w') as original_file:
-                original_file.write(backup_file.read())
-        logger.info(f"Restored original configuration from {backup_path}")
-    except Exception as e:
-        logger.error(f"Failed to restore from backup: {e}")
+        with open(templates_path, 'r') as file:
+            templates = json.load(file)
+            return templates.get('version', '1.0.0')  # Default version if not found
+    except FileNotFoundError:
+        return '1.0.0'  # Default version if templates.json does not exist
+
+def validate_dependencies(config: Dict[str, Any]) -> None:
+    """Validate the dependencies section of the configuration.
+
+    Args:
+        config (Dict[str, Any]): The project configuration.
+    
+    Raises:
+        ValueError: If dependencies are improperly formatted.
+    """
+    if 'dependencies' in config:
+        if not isinstance(config['dependencies'], list):
+            raise ValueError("Dependencies must be a list.")
