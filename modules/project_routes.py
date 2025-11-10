@@ -1,56 +1,74 @@
 import os
-import shutil
 import yaml
-from typing import Optional
 import logging
+from datetime import datetime
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-def repair_project_config() -> None:
-    """Repair project.yaml configuration issues."""
-    project_yaml_path = 'project.yaml'
-    backup_yaml_path = f'project.yaml.bak'
-    
-    # Step 1: Create a backup of project.yaml
-    shutil.copyfile(project_yaml_path, backup_yaml_path)
-    
+def repair_project_config(file_path: str) -> bool:
+    """
+    Repair the project.yaml configuration file by ensuring it is valid YAML
+    and contains all required fields.
+
+    Args:
+        file_path (str): Path to the project.yaml file.
+
+    Returns:
+        bool: True if the repair was successful, False otherwise.
+    """
+    # Step 1: Create a timestamped backup
+    backup_path = f"{file_path}.{datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
     try:
-        # Step 2: Load project.yaml
-        with open(project_yaml_path, 'r') as file:
-            config = yaml.safe_load(file) or {}
+        with open(file_path, 'r') as original_file:
+            with open(backup_path, 'w') as backup_file:
+                backup_file.write(original_file.read())
+        logger.info(f"Backup created at {backup_path}")
+    except Exception as e:
+        logger.error(f"Failed to create backup: {e}")
+        return False
 
-        # Step 3: Check for required fields and fix YAML syntax errors
+    # Step 2: Attempt to read and repair the YAML file
+    try:
+        with open(file_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        if not isinstance(config, dict):
+            logger.error("YAML file does not load as a dictionary.")
+            return restore_backup(file_path, backup_path)
+
+        # Step 3: Add missing required fields
         if 'template_version' not in config:
-            # Step 4: Infer template_version from templates.json if available
-            template_version = get_template_version()
-            if template_version:
-                config['template_version'] = template_version
-            else:
-                config['template_version'] = '1.0.0'  # Default version
+            config['template_version'] = "1.0"  # Set a sensible default
+            logger.info("Added missing 'template_version' field.")
 
-        # Additional required fields could be checked and added here
-        if 'dependencies' not in config:
-            config['dependencies'] = {}
-
-        # Step 5: Save the repaired configuration back to project.yaml
-        with open(project_yaml_path, 'w') as file:
-            yaml.dump(config, file)
+        # Step 4: Validate and write back the YAML
+        with open(file_path, 'w') as f:
+            yaml.safe_dump(config, f)
 
     except Exception as e:
-        logger.error("Failed to repair project.yaml: %s", str(e))
-        # Restore from backup if repair fails
-        shutil.copyfile(backup_yaml_path, project_yaml_path)
-        logger.info("Restored project.yaml from backup.")
-    finally:
-        # Clean up the backup file
-        if os.path.exists(backup_yaml_path):
-            os.remove(backup_yaml_path)
+        logger.error(f"Failed to repair project.yaml: {e}")
+        return restore_backup(file_path, backup_path)
+    
+    logger.info("project.yaml successfully repaired.")
+    return True
 
-def get_template_version() -> Optional[str]:
-    """Get the template version from templates.json if available."""
+def restore_backup(file_path: str, backup_path: str) -> bool:
+    """
+    Restore the project.yaml file from a backup.
+
+    Args:
+        file_path (str): Path to the project.yaml file.
+        backup_path (str): Path to the backup file.
+
+    Returns:
+        bool: True if restore was successful, False otherwise.
+    """
     try:
-        with open('templates.json', 'r') as file:
-            templates_config = json.load(file)
-            return templates_config.get('template_version')
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
+        os.remove(file_path)  # Remove the corrupted file
+        os.rename(backup_path, file_path)  # Restore from backup
+        logger.info(f"Restored project.yaml from {backup_path}")
+    except Exception as e:
+        logger.error(f"Failed to restore backup: {e}")
+        return False
+    return True
