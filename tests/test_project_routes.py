@@ -1,34 +1,40 @@
-import os
 import pytest
-import tempfile
+import os
 import shutil
+import yaml
 from modules.project_routes import repair_project_config
 
 @pytest.fixture
-def temp_project_yaml():
-    """Creates a temporary project.yaml file for testing."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        project_file = os.path.join(temp_dir, 'project.yaml')
-        with open(project_file, 'w') as f:
-            f.write("dependencies:\n  - package_a\n  - package_b\n")
-        yield project_file
+def setup_project_yaml(tmp_path):
+    """Setup a temporary project.yaml for testing."""
+    project_yaml = tmp_path / "project.yaml"
+    project_yaml.write_text("dependencies:\n  - fastapi\n")
+    yield project_yaml
+    if project_yaml.exists():
+        os.remove(project_yaml)
 
-def test_repair_project_config(temp_project_yaml):
-    """Tests the repair_project_config function."""
-    # Test valid YAML structure
-    repair_project_config(temp_project_yaml)
-    
-    # Check if template_version is added
-    with open(temp_project_yaml, 'r') as f:
-        config = yaml.safe_load(f)
-        assert 'template_version' in config
+@pytest.fixture
+def setup_templates_json(tmp_path):
+    """Setup a temporary templates.json for testing."""
+    templates_json = tmp_path / "templates.json"
+    templates_json.write_text('{"version": "1.0.1"}')
+    yield templates_json
+    if templates_json.exists():
+        os.remove(templates_json)
 
-def test_repair_project_config_backup(temp_project_yaml):
-    """Tests that a backup is created before repairs."""
-    backup_file = f"{temp_project_yaml}.{datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
+def test_repair_project_config(setup_project_yaml, setup_templates_json):
+    """Test the repair_project_config function."""
+    repair_project_config()
     
-    # Perform repair
-    repair_project_config(temp_project_yaml)
+    with open(setup_project_yaml, 'r') as file:
+        config = yaml.safe_load(file)
+        
+    assert 'template_version' in config
+    assert config['template_version'] == "1.0.1"
+
+def test_backup_creation(setup_project_yaml):
+    """Test if backup is created before changes."""
+    original_backup_path = "backup/project_backup_*.yaml"
+    repair_project_config()
     
-    # Check if backup file exists
-    assert os.path.exists(backup_file)
+    assert len(glob.glob(original_backup_path)) == 1

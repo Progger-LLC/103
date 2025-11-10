@@ -1,49 +1,47 @@
 import os
 import shutil
 import yaml
-from datetime import datetime
-from typing import Optional
+import json
+import logging
+from typing import Dict, Any
 
-def repair_project_config(project_file: str, templates_file: Optional[str] = None) -> None:
-    """Repairs the project.yaml configuration by adding missing fields and fixing errors.
+logger = logging.getLogger(__name__)
 
-    Args:
-        project_file (str): Path to the project.yaml file.
-        templates_file (Optional[str]): Path to the templates.json file if available.
-
-    Raises:
-        Exception: If the repair process fails.
-    """
+def repair_project_config() -> None:
+    """Repair the project.yaml configuration issues."""
+    
+    project_yaml_path = "project.yaml"
+    backup_path = f"backup/project_backup_{int(time.time())}.yaml"
+    templates_json_path = "templates.json"
     
     # Step 1: Create a timestamped backup of project.yaml
-    backup_file = f"{project_file}.{datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
-    shutil.copyfile(project_file, backup_file)
-
+    if not os.path.exists("backup"):
+        os.makedirs("backup")
+    shutil.copy(project_yaml_path, backup_path)
+    logger.info(f"Backup created at {backup_path}")
+    
     try:
-        # Step 2: Load and fix the YAML file
-        with open(project_file, 'r') as file:
-            config = yaml.safe_load(file) or {}
+        # Step 2: Load existing project.yaml
+        with open(project_yaml_path, 'r') as file:
+            project_config = yaml.safe_load(file) or {}
         
-        # Step 3: Add missing required fields with sensible defaults
-        if 'template_version' not in config:
-            if templates_file:
-                # Infer template_version from templates.json if available
-                with open(templates_file, 'r') as json_file:
-                    templates = json.load(json_file)
-                    config['template_version'] = templates.get('default_version', '1.0.0')
-            else:
-                config['template_version'] = '1.0.0'
+        # Step 3: Fix missing template_version and other required fields
+        if 'template_version' not in project_config:
+            logger.warning("template_version field is missing, adding default.")
+            project_config['template_version'] = "1.0.0"  # Sensible default
         
-        # Step 4: Validate YAML structure and dependencies formatting
-        # Assuming dependencies is a list; add additional validation as needed
-        if 'dependencies' not in config:
-            config['dependencies'] = []
-        
-        # Step 5: Write the fixed config back to project.yaml
-        with open(project_file, 'w') as file:
-            yaml.dump(config, file)
+        # Step 4: Read templates.json to infer template_version if available
+        if os.path.exists(templates_json_path):
+            with open(templates_json_path, 'r') as templates_file:
+                templates = json.load(templates_file)
+                project_config['template_version'] = templates.get('version', project_config['template_version'])
 
+        # Step 5: Save the updated project.yaml
+        with open(project_yaml_path, 'w') as file:
+            yaml.safe_dump(project_config, file)
+        logger.info("project.yaml has been updated successfully.")
+    
     except Exception as e:
-        # Restore from backup if repair fails
-        shutil.copyfile(backup_file, project_file)
-        raise Exception("Repair of project.yaml failed, restored from backup.") from e
+        logger.error(f"Error during repair process: {e}. Restoring from backup.")
+        shutil.copy(backup_path, project_yaml_path)  # Restore from backup
+        logger.info("Restored project.yaml from backup.")
