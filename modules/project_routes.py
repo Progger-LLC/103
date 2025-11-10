@@ -1,45 +1,79 @@
 import os
-import shutil
 import yaml
+import logging
 from datetime import datetime
-from typing import Dict, Any
+from typing import Optional
 
-def repair_project_config() -> None:
-    """Repair the project.yaml configuration by creating a backup and fixing issues.
+logger = logging.getLogger(__name__)
 
-    This function will backup the current project.yaml, fix any syntax errors,
-    and ensure required fields are present. It will restore from backup if needed.
+def repair_project_config(yaml_file: str) -> bool:
+    """Repairs the project.yaml configuration file.
+
+    This function creates a backup of the original YAML file,
+    fixes any syntax errors, adds missing required fields,
+    and infers the template_version from templates.json if available.
+
+    Args:
+        yaml_file (str): Path to the project.yaml file.
+
+    Returns:
+        bool: True if repair was successful, False otherwise.
     """
-    project_yaml_path = "project.yaml"
-    backup_path = f"project_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
 
-    # Step 1: Create a backup of the current project.yaml
-    shutil.copyfile(project_yaml_path, backup_path)
-    
+    # Create a backup of the YAML file
+    backup_file = f"{yaml_file}.{datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
     try:
-        # Step 2: Load the existing YAML file
-        with open(project_yaml_path, 'r') as file:
-            config = yaml.safe_load(file) or {}
-
-        # Step 3: Check and add missing fields
-        if 'template_version' not in config:
-            config['template_version'] = '1.0.0'  # sensible default
-
-        # Ensure all required fields and dependencies formatting are correct
-        required_fields = ['template_version', 'dependencies']
-        for field in required_fields:
-            if field not in config:
-                config[field] = [] if field == 'dependencies' else ''
-
-        # Step 4: Write back the updated YAML
-        with open(project_yaml_path, 'w') as file:
-            yaml.safe_dump(config, file)
-
+        with open(yaml_file, 'r') as original_file:
+            with open(backup_file, 'w') as backup:
+                backup.write(original_file.read())
+        logger.info(f"Backup created: {backup_file}")
     except Exception as e:
-        # Restore from backup if there's an issue
-        shutil.copyfile(backup_path, project_yaml_path)
-        raise e
-    finally:
-        # Clean up the backup file if everything goes well
-        if os.path.exists(backup_path):
-            os.remove(backup_path)
+        logger.error(f"Failed to create backup: {str(e)}")
+        return False
+
+    # Load the existing YAML configuration
+    try:
+        with open(yaml_file, 'r') as file:
+            config = yaml.safe_load(file)
+    except yaml.YAMLError as e:
+        logger.error(f"YAML error: {str(e)}")
+        return False
+
+    # Ensure all required fields are present
+    required_fields = {
+        'template_version': '1.0.0',  # Default value
+        'dependencies': {},
+    }
+
+    for key, default in required_fields.items():
+        if key not in config:
+            config[key] = default
+            logger.warning(f"Missing field '{key}' added with default value '{default}'")
+
+    # Check for dependencies formatting (example check)
+    if 'dependencies' in config and not isinstance(config['dependencies'], dict):
+        logger.error("Dependencies should be formatted as a dictionary.")
+        return False
+
+    # Infer template_version from templates.json if available
+    templates_file = 'templates.json'
+    if os.path.exists(templates_file):
+        with open(templates_file, 'r') as file:
+            templates = json.load(file)
+            if 'template_version' in templates:
+                config['template_version'] = templates['template_version']
+                logger.info(f"Template version inferred: {config['template_version']}")
+
+    # Save the repaired configuration
+    try:
+        with open(yaml_file, 'w') as file:
+            yaml.dump(config, file)
+        logger.info("Project configuration repaired successfully.")
+    except Exception as e:
+        logger.error(f"Failed to write updated configuration: {str(e)}")
+        # Restore from backup if repair fails
+        os.replace(backup_file, yaml_file)
+        logger.info("Restored from backup.")
+        return False
+
+    return True
