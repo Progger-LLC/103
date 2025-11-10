@@ -1,33 +1,52 @@
 import pytest
 import os
-import shutil
-from modules.project_repair import fix_project_yaml
+import yaml
+from modules.project_repair import repair_project_yaml
 
 @pytest.fixture
-def setup_project_yaml(tmp_path):
-    """Fixture to create a sample project.yaml."""
+def setup_yaml_file(tmp_path):
+    """Setup a temporary YAML file for testing."""
     yaml_content = """
-    project:
-      name: Sample Project
-      version: 1.0
-      dependencies:
-        - fastapi
-        - sqlalchemy
+    entry_point: main.py
+    dependencies:
+      - fastapi==0.104.1
     """
-    file_path = tmp_path / "project.yaml"
-    with open(file_path, 'w') as f:
+    yaml_file = tmp_path / "project.yaml"
+    with open(yaml_file, 'w') as f:
         f.write(yaml_content)
-    return str(file_path)
+    return yaml_file
 
-def test_fix_project_yaml(setup_project_yaml):
-    """Test the fix_project_yaml function."""
-    templates_file = 'templates.json'  # Assuming this file exists for the test
-    fix_project_yaml(setup_project_yaml, templates_file)
+@pytest.fixture
+def templates_json_file(tmp_path):
+    """Setup a temporary templates.json file for testing."""
+    templates_content = '{"template_version": "1.0.0"}'
+    templates_file = tmp_path / "templates.json"
+    with open(templates_file, 'w') as f:
+        f.write(templates_content)
+    return templates_file
+
+def test_repair_project_yaml(setup_yaml_file, templates_json_file):
+    """Test repairing project.yaml."""
+    repair_project_yaml(str(setup_yaml_file), str(templates_json_file))
     
-    # Check if the backup is created
-    assert os.path.exists(f"{setup_project_yaml}.bak")
+    with open(setup_yaml_file, 'r') as f:
+        config = yaml.safe_load(f)
     
-    # Validate the repaired YAML
-    with open(setup_project_yaml, 'r') as f:
-        yaml_data = yaml.safe_load(f)
-        assert 'template_version' in yaml_data  # Check if the field is added
+    assert config['template_version'] == "1.0.0"
+    assert 'dependencies' in config
+    assert 'entry_point' in config
+
+def test_repair_with_missing_template_version(setup_yaml_file, templates_json_file):
+    """Test repairing project.yaml when template_version is missing."""
+    yaml_content = """
+    entry_point: main.py
+    """
+    with open(setup_yaml_file, 'w') as f:
+        f.write(yaml_content)
+    
+    repair_project_yaml(str(setup_yaml_file), str(templates_json_file))
+    
+    with open(setup_yaml_file, 'r') as f:
+        config = yaml.safe_load(f)
+
+    assert config['template_version'] == "1.0.0"
