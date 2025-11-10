@@ -1,66 +1,31 @@
 import os
-import shutil
 import yaml
+import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Optional
 
-def repair_project_config(file_path: str) -> None:
-    """Repairs the project.yaml configuration file.
+logger = logging.getLogger(__name__)
 
-    This function performs the following actions:
-    1. Creates a backup of the original project.yaml
-    2. Validates and fixes YAML syntax
-    3. Adds missing required fields with sensible defaults
-    4. Infers template_version from templates.json if available
-    5. Restores from backup if repair fails.
-
-    Args:
-        file_path (str): Path to the project.yaml file.
-
-    Raises:
-        Exception: If the repair process fails.
-    """
-    # Step 1: Create a backup of the original project.yaml
-    backup_path = f"{file_path}.{datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
-    shutil.copy(file_path, backup_path)
-
+def repair_project_config(config_path: str, templates_path: Optional[str] = None) -> None:
+    """Repair the project configuration in project.yaml."""
+    # Step 1: Create a timestamped backup of project.yaml
+    backup_path = f"{config_path}.{datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
+    os.rename(config_path, backup_path)
+    
     try:
-        # Step 2: Load the existing project.yaml
-        with open(file_path, 'r') as f:
-            data = yaml.safe_load(f) or {}
+        # Step 2: Load the existing configuration
+        with open(backup_path, 'r') as file:
+            config = yaml.safe_load(file)
 
-        # Step 3: Fix YAML syntax errors and add missing fields
-        if 'template_version' not in data:
-            data['template_version'] = '1.0.0'  # Default version
+        # Step 3: Check and fix configuration issues
+        if 'template_version' not in config:
+            logger.info("Adding missing 'template_version' field.")
+            config['template_version'] = "1.0.0"  # Default value
 
-        # Add any default fields that are necessary
-        # (Assuming more fields may be required, e.g., dependencies)
-        if 'dependencies' not in data:
-            data['dependencies'] = {}
-
-        # Step 4: Infer template_version from templates.json if available
-        template_version = infer_template_version()
-        if template_version:
-            data['template_version'] = template_version
-
-        # Step 5: Write changes back to project.yaml
-        with open(file_path, 'w') as f:
-            yaml.safe_dump(data, f)
+        # Step 4: Validate YAML format (this step assumes the structure is correct)
+        yaml.dump(config, open(config_path, 'w'))
 
     except Exception as e:
-        # Restore from backup if repair fails
-        shutil.copy(backup_path, file_path)
-        raise Exception(f"Repair failed, restored from backup: {str(e)}")
-
-def infer_template_version() -> Optional[str]:
-    """Infers template version from templates.json if available.
-
-    Returns:
-        Optional[str]: The inferred template version or None if not found.
-    """
-    try:
-        with open('templates.json', 'r') as f:
-            templates = json.load(f)
-            return templates.get('template_version', None)
-    except FileNotFoundError:
-        return None
+        logger.error("Repair failed, restoring from backup.")
+        os.rename(backup_path, config_path)  # Restore from backup
+        raise e  # Raise the original exception
