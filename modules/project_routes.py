@@ -1,65 +1,81 @@
 import os
 import yaml
+import shutil
+import datetime
+from typing import Any, Dict
 import logging
-from datetime import datetime
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-def repair_project_config() -> None:
+def repair_project_config(file_path: str, templates_path: str) -> None:
     """Repair the project.yaml configuration file.
 
-    This function creates a backup of the project.yaml file,
-    checks for and fixes configuration issues, and restores
-    from backup if any errors occur during the repair process.
+    This function creates a backup, fixes any syntax errors, and ensures
+    all required fields are present in the project.yaml file.
+
+    Args:
+        file_path (str): The path to the project.yaml file.
+        templates_path (str): The path to the templates.json file.
     """
-    project_yaml_path = 'project.yaml'
-    backup_path = f'project_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.yaml'
-    
-    # Step 1: Create a timestamped backup of project.yaml
-    if os.path.exists(project_yaml_path):
-        os.rename(project_yaml_path, backup_path)
-        logger.info(f'Backup created at {backup_path}')
-    
+    backup_file_path = create_backup(file_path)
     try:
-        # Step 2: Load the current configuration
-        with open(backup_path, 'r') as file:
-            config = yaml.safe_load(file) or {}
+        with open(file_path, 'r') as file:
+            config_data = yaml.safe_load(file)
         
-        # Step 3: Fix YAML syntax errors and add missing fields
-        if 'template_version' not in config:
-            # Infer template_version from templates.json if available
-            template_version = infer_template_version()
-            config['template_version'] = template_version or '1.0.0'  # Default value
-            logger.info('Added missing template_version field')
-        
-        # Additional checks and fixes could be added here
+        # Fix configuration
+        if 'template_version' not in config_data:
+            config_data['template_version'] = infer_template_version(templates_path)
 
-        # Step 4: Validate YAML structure and save back
-        with open(project_yaml_path, 'w') as file:
-            yaml.dump(config, file)
-        logger.info('project.yaml has been repaired successfully')
+        # Ensure dependencies format
+        if 'dependencies' not in config_data or not isinstance(config_data['dependencies'], dict):
+            config_data['dependencies'] = {}
 
-    except Exception as e:
-        logger.error('Repair failed: %s', e)
-        # Restore from backup if repair fails
-        os.rename(backup_path, project_yaml_path)
-        logger.info('Restored from backup')
-    else:
-        # Clean up backup if repair succeeded
-        os.remove(backup_path)
+        # Write back the fixed configuration
+        with open(file_path, 'w') as file:
+            yaml.safe_dump(config_data, file)
+
+        logger.info("Project configuration repaired successfully.")
     
+    except Exception as e:
+        logger.error(f"Failed to repair project configuration: {e}")
+        restore_backup(file_path, backup_file_path)
 
-def infer_template_version() -> str:
-    """Infer the template version from templates.json if available.
+def create_backup(file_path: str) -> str:
+    """Create a timestamped backup of the specified file.
+
+    Args:
+        file_path (str): The path to the original file.
 
     Returns:
-        str: The inferred template version, or None if unavailable.
+        str: The path to the created backup file.
     """
-    try:
-        with open('templates.json', 'r') as file:
-            templates = json.load(file)
-            return templates.get('template_version')
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.warning('Could not infer template_version: %s', e)
-        return None
+    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    backup_file_path = f"{file_path}.{timestamp}.bak"
+    shutil.copy(file_path, backup_file_path)
+    logger.info(f"Backup created at: {backup_file_path}")
+    return backup_file_path
+
+def restore_backup(original_file_path: str, backup_file_path: str) -> None:
+    """Restore the original file from the backup.
+
+    Args:
+        original_file_path (str): The path to the original file.
+        backup_file_path (str): The path to the backup file.
+    """
+    shutil.copy(backup_file_path, original_file_path)
+    logger.info("Restored original configuration from backup.")
+
+def infer_template_version(templates_path: str) -> str:
+    """Infer the template version from templates.json if available.
+
+    Args:
+        templates_path (str): The path to the templates.json file.
+
+    Returns:
+        str: The inferred template version, or a default version.
+    """
+    if os.path.exists(templates_path):
+        with open(templates_path, 'r') as file:
+            templates_data = json.load(file)
+            return templates_data.get('template_version', '1.0.0')  # Default version
+    return '1.0.0'  # Default version if file does not exist
