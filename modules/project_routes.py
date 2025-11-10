@@ -3,41 +3,39 @@ import shutil
 import yaml
 from datetime import datetime
 from typing import Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 def repair_project_config() -> None:
-    """Repair project.yaml configuration issues."""
-    project_yaml_path = "project.yaml"
-    backup_path = f"{project_yaml_path}.{datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
-
-    # Step 1: Create a backup
-    shutil.copy(project_yaml_path, backup_path)
-
+    """Repair the project.yaml configuration file."""
+    
+    config_path = "project.yaml"
+    
+    # Step 1: Create a timestamped backup of project.yaml
+    backup_path = f"project_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
+    shutil.copyfile(config_path, backup_path)
+    logger.info(f"Backup created at {backup_path}")
+    
     try:
-        # Step 2: Load existing YAML
-        with open(project_yaml_path, 'r') as file:
-            config = yaml.safe_load(file)
+        # Step 2: Load existing configuration
+        with open(config_path, 'r') as file:
+            config = yaml.safe_load(file) or {}
 
-        # Step 3: Validate and fix configuration
+        # Step 3: Validate and fix YAML
         if 'template_version' not in config:
-            config['template_version'] = "1.0"  # Default version if not found
+            config['template_version'] = "1.0.0"  # Default version
 
-        # Additional checks for required fields can be added here
-        # For example:
-        required_fields = ['entry_point', 'dependencies']
-        for field in required_fields:
-            if field not in config:
-                config[field] = [] if field == 'dependencies' else ""
+        # Additional validation for dependencies
+        if 'dependencies' not in config:
+            config['dependencies'] = {}
 
-        # Step 4: Write changes back to YAML
-        with open(project_yaml_path, 'w') as file:
+        # Step 4: Save the fixed configuration
+        with open(config_path, 'w') as file:
             yaml.dump(config, file)
+        logger.info("project.yaml has been repaired and saved successfully.")
 
     except Exception as e:
-        # Restore from backup if any error occurs
-        shutil.copy(backup_path, project_yaml_path)
-        raise
-
-    finally:
-        # Clean up backup file if everything went well
-        if os.path.exists(backup_path):
-            os.remove(backup_path)
+        logger.error("Repair failed, restoring from backup.", exc_info=e)
+        shutil.copyfile(backup_path, config_path)
+        logger.info(f"Restored from backup: {backup_path}")

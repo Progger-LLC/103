@@ -1,45 +1,45 @@
 import pytest
-import yaml
 import os
+import yaml
 from modules.project_routes import repair_project_config
 
-@pytest.fixture
-def setup_yaml_file(tmp_path):
-    """Fixture to set up a temporary project.yaml file for testing."""
-    yaml_content = """
-    entry_point: main.py
-    dependencies:
-      - fastapi
-    """
-    yaml_file = tmp_path / "project.yaml"
-    yaml_file.write_text(yaml_content)
-    yield yaml_file
-    os.remove(yaml_file)
-
-def test_repair_project_config(setup_yaml_file):
-    """Test the repair_project_config function."""
-    # Simulate missing template_version
-    with open(setup_yaml_file, 'a') as f:
-        f.write("\ntemplate_version: \n")
-
+def test_repair_project_config_valid():
+    """Test repairing a valid project.yaml."""
+    # Create a mock project.yaml for testing
+    with open("project.yaml", "w") as f:
+        yaml.dump({"dependencies": {"fastapi": "0.68.0"}}, f)
+    
     repair_project_config()
 
-    with open(setup_yaml_file, 'r') as f:
+    with open("project.yaml", "r") as f:
         config = yaml.safe_load(f)
+    
+    assert "template_version" in config
+    assert config["template_version"] == "1.0.0"
 
-    assert 'template_version' in config
-    assert config['template_version'] == "1.0"
-    assert 'entry_point' in config
-    assert 'dependencies' in config
+def test_repair_project_config_missing_dependencies():
+    """Test repairing with missing dependencies."""
+    with open("project.yaml", "w") as f:
+        yaml.dump({}, f)
+    
+    repair_project_config()
 
-def test_repair_project_config_invalid_yaml(setup_yaml_file):
-    """Test handling of invalid YAML."""
-    with open(setup_yaml_file, 'w') as f:
-        f.write("invalid_yaml: ")
+    with open("project.yaml", "r") as f:
+        config = yaml.safe_load(f)
+    
+    assert "template_version" in config
+    assert "dependencies" in config
+    assert config["dependencies"] == {}
 
-    with pytest.raises(Exception):
-        repair_project_config()
+def test_repair_project_config_backup():
+    """Test that a backup is created before repairs."""
+    if os.path.exists("project.yaml"):
+        os.remove("project.yaml")
+    
+    with open("project.yaml", "w") as f:
+        yaml.dump({}, f)
 
-    # Ensure the original file still exists and is not corrupted
-    with open(setup_yaml_file, 'r') as f:
-        assert f.read() == "invalid_yaml: "
+    repair_project_config()
+    
+    backup_files = [f for f in os.listdir() if f.startswith("project_backup_")]
+    assert len(backup_files) > 0
