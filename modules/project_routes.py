@@ -1,44 +1,37 @@
+import yaml
 import os
 import shutil
-import yaml
+import logging
 from datetime import datetime
-from typing import Dict, Any
+from typing import Optional
 
-def repair_project_config() -> None:
+logger = logging.getLogger(__name__)
+
+def repair_project_config(file_path: str) -> None:
     """Repair project.yaml configuration issues."""
-    project_yaml_path = 'project.yaml'
-    backup_path = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{project_yaml_path}"
-    
-    # Step 1: Create a timestamped backup
-    shutil.copy(project_yaml_path, backup_path)
-    
+    # Create a backup of the original project.yaml
+    backup_file = f"{file_path}.{datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
+    shutil.copy(file_path, backup_file)
+    logger.info(f"Backup created at {backup_file}")
+
     try:
-        # Step 2: Load existing project.yaml
-        with open(project_yaml_path, 'r') as f:
-            config = yaml.safe_load(f)
+        with open(file_path, 'r') as file:
+            config = yaml.safe_load(file)
 
-        # Step 3: Validate and fix YAML syntax
-        if not isinstance(config, dict):
-            raise ValueError("Invalid YAML format: expected a dictionary.")
-
-        # Step 4: Ensure all required fields are present
+        # Ensure template_version is present
         if 'template_version' not in config:
-            config['template_version'] = '1.0.0'  # Default version
-        if 'dependencies' not in config:
-            config['dependencies'] = {}
+            config['template_version'] = "1.0.0"  # Set a sensible default
+            logger.info("Added missing field: template_version")
 
-        # Step 5: Load template version from templates.json if available
-        if os.path.exists('templates.json'):
-            with open('templates.json', 'r') as f:
-                templates = json.load(f)
-                if 'template_version' in templates:
-                    config['template_version'] = templates['template_version']
+        # Additional validation and formatting can be added here
+        # For example, ensuring dependencies are properly formatted
 
-        # Step 6: Save fixed project.yaml
-        with open(project_yaml_path, 'w') as f:
-            yaml.safe_dump(config, f)
+        # Write the updated configuration back to project.yaml
+        with open(file_path, 'w') as file:
+            yaml.dump(config, file)
+            logger.info("Successfully updated project.yaml")
 
     except Exception as e:
         # Restore from backup if repair fails
-        shutil.copy(backup_path, project_yaml_path)
-        raise e
+        shutil.copy(backup_file, file_path)
+        logger.error(f"Repair failed, restored from backup: {e}")
