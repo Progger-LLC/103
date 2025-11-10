@@ -1,47 +1,48 @@
 import os
 import shutil
 import yaml
-import json
-import logging
+from datetime import datetime
 from typing import Dict, Any
+from src.exceptions import ConfigurationError
+import logging
 
 logger = logging.getLogger(__name__)
 
 def repair_project_config() -> None:
-    """Repair the project.yaml configuration issues."""
-    
-    project_yaml_path = "project.yaml"
-    backup_path = f"backup/project_backup_{int(time.time())}.yaml"
-    templates_json_path = "templates.json"
-    
-    # Step 1: Create a timestamped backup of project.yaml
-    if not os.path.exists("backup"):
-        os.makedirs("backup")
-    shutil.copy(project_yaml_path, backup_path)
-    logger.info(f"Backup created at {backup_path}")
-    
-    try:
-        # Step 2: Load existing project.yaml
-        with open(project_yaml_path, 'r') as file:
-            project_config = yaml.safe_load(file) or {}
-        
-        # Step 3: Fix missing template_version and other required fields
-        if 'template_version' not in project_config:
-            logger.warning("template_version field is missing, adding default.")
-            project_config['template_version'] = "1.0.0"  # Sensible default
-        
-        # Step 4: Read templates.json to infer template_version if available
-        if os.path.exists(templates_json_path):
-            with open(templates_json_path, 'r') as templates_file:
-                templates = json.load(templates_file)
-                project_config['template_version'] = templates.get('version', project_config['template_version'])
+    """Repair the project.yaml configuration file."""
+    project_config_path = "project.yaml"
+    backup_path = f"backup/project_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
 
-        # Step 5: Save the updated project.yaml
-        with open(project_yaml_path, 'w') as file:
-            yaml.safe_dump(project_config, file)
-        logger.info("project.yaml has been updated successfully.")
-    
+    # Step 1: Create a backup of project.yaml
+    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+    shutil.copy(project_config_path, backup_path)
+    logger.info(f"Backup created at {backup_path}")
+
+    try:
+        with open(project_config_path, 'r') as file:
+            config = yaml.safe_load(file)
+
+        # Step 2: Fix YAML syntax errors (if any)
+        if not isinstance(config, dict):
+            raise ConfigurationError("YAML structure is not a valid dictionary.")
+
+        # Step 3: Ensure required fields are present
+        if 'template_version' not in config:
+            config['template_version'] = "1.0.0"  # Default value
+            logger.info("Added missing 'template_version' with default value.")
+
+        # Additional sensible defaults can be added here
+
+        # Step 4: Validate dependencies formatting (if applicable)
+        if 'dependencies' in config and not isinstance(config['dependencies'], list):
+            raise ConfigurationError("Dependencies must be a list.")
+
+        # Step 5: Write the fixed configuration back to project.yaml
+        with open(project_config_path, 'w') as file:
+            yaml.dump(config, file)
+        logger.info("Successfully repaired project.yaml")
+
     except Exception as e:
-        logger.error(f"Error during repair process: {e}. Restoring from backup.")
-        shutil.copy(backup_path, project_yaml_path)  # Restore from backup
-        logger.info("Restored project.yaml from backup.")
+        logger.error(f"Repairing project.yaml failed: {e}. Restoring from backup.")
+        shutil.copy(backup_path, project_config_path)
+        raise ConfigurationError("Failed to repair project.yaml, restored from backup.")

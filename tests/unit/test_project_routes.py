@@ -1,35 +1,47 @@
 import pytest
 import os
-import yaml
-from unittest.mock import patch, mock_open
+import shutil
 from modules.project_routes import repair_project_config
-from src.exceptions import InvalidConfigError
+from src.exceptions import ConfigurationError
+import yaml
 
-@pytest.fixture
-def mock_project_yaml():
-    """Fixture to mock project.yaml content."""
-    return {
-        'dependencies': ['fastapi', 'uvicorn'],
-    }
+def create_test_yaml(content: dict, filename='test_project.yaml'):
+    """Helper function to create a test YAML file."""
+    with open(filename, 'w') as file:
+        yaml.dump(content, file)
 
-def test_repair_project_config_creates_backup(mock_project_yaml):
-    """Test if backup is created before modifying project.yaml."""
-    mock_yaml_content = yaml.dump(mock_project_yaml)
-    with patch("builtins.open", mock_open(read_data=mock_yaml_content)):
-        with patch("shutil.copyfile") as mock_copyfile:
-            repair_project_config()
-            mock_copyfile.assert_called_once()
+def remove_test_yaml(filename='test_project.yaml'):
+    """Helper function to remove the test YAML file."""
+    if os.path.exists(filename):
+        os.remove(filename)
 
-def test_repair_project_config_adds_template_version(mock_project_yaml):
-    """Test if missing template_version is added to project.yaml."""
-    mock_yaml_content = yaml.dump(mock_project_yaml)
-    with patch("builtins.open", mock_open(read_data=mock_yaml_content)):
-        with patch("yaml.safe_dump") as mock_safe_dump:
-            repair_project_config()
-            assert 'template_version' in mock_project_yaml
+def test_repair_project_config_missing_template_version():
+    """Test the repair_project_config function when template_version is missing."""
+    create_test_yaml({'dependencies': ['fastapi==0.104.1']}, 'test_project.yaml')
+    
+    try:
+        repair_project_config()
+        with open('test_project.yaml', 'r') as file:
+            config = yaml.safe_load(file)
+        assert config['template_version'] == "1.0.0"
+    finally:
+        remove_test_yaml('test_project.yaml')
 
 def test_repair_project_config_invalid_yaml():
-    """Test if InvalidConfigError is raised when YAML is invalid."""
-    with patch("builtins.open", side_effect=Exception("File not found")):
-        with pytest.raises(InvalidConfigError):
-            repair_project_config()
+    """Test the repair_project_config function with invalid YAML."""
+    create_test_yaml("invalid_yaml", 'test_project.yaml')
+    
+    with pytest.raises(ConfigurationError):
+        repair_project_config()
+    
+    remove_test_yaml('test_project.yaml')
+
+def test_repair_project_config_backup_creation():
+    """Test that a backup is created before changes."""
+    create_test_yaml({'dependencies': ['fastapi==0.104.1']}, 'test_project.yaml')
+    
+    assert not os.path.exists('backup/')  # Ensure backup does not exist yet
+    repair_project_config()
+    assert os.path.exists('backup/')  # Backup should now exist
+    remove_test_yaml('test_project.yaml')
+    shutil.rmtree('backup/')  # Clean up backup directory
