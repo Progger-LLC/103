@@ -1,48 +1,50 @@
 import os
-import shutil
 import yaml
-from datetime import datetime
+import datetime
 from typing import Dict, Any
-from src.exceptions import ConfigurationError
+import shutil
 import logging
 
 logger = logging.getLogger(__name__)
 
-def repair_project_config() -> None:
-    """Repair the project.yaml configuration file."""
-    project_config_path = "project.yaml"
-    backup_path = f"backup/project_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
+def repair_project_config(file_path: str) -> None:
+    """Repair the project configuration in the specified YAML file.
+    
+    This function creates a backup of the YAML file, fixes any configuration 
+    issues, and ensures all required fields are present.
 
-    # Step 1: Create a backup of project.yaml
-    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
-    shutil.copy(project_config_path, backup_path)
-    logger.info(f"Backup created at {backup_path}")
+    Args:
+        file_path (str): Path to the project.yaml file.
+
+    Raises:
+        Exception: If the repair fails, raises an exception.
+    """
+    # Step 1: Create a timestamped backup
+    backup_file_path = f"{file_path}.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.bak"
+    shutil.copyfile(file_path, backup_file_path)
+    logger.info(f"Backup created at {backup_file_path}")
 
     try:
-        with open(project_config_path, 'r') as file:
+        # Step 2: Load the current configuration
+        with open(file_path, 'r') as file:
             config = yaml.safe_load(file)
 
-        # Step 2: Fix YAML syntax errors (if any)
-        if not isinstance(config, dict):
-            raise ConfigurationError("YAML structure is not a valid dictionary.")
-
-        # Step 3: Ensure required fields are present
+        # Step 3: Check for missing required fields
         if 'template_version' not in config:
-            config['template_version'] = "1.0.0"  # Default value
-            logger.info("Added missing 'template_version' with default value.")
+            config['template_version'] = '1.0.0'  # Set a default version
+            logger.info("Added missing field 'template_version' with default value.")
 
-        # Additional sensible defaults can be added here
+        # Step 4: Validate dependencies formatting (example validation)
+        if 'dependencies' in config and not isinstance(config['dependencies'], dict):
+            raise ValueError("Dependencies must be a dictionary.")
 
-        # Step 4: Validate dependencies formatting (if applicable)
-        if 'dependencies' in config and not isinstance(config['dependencies'], list):
-            raise ConfigurationError("Dependencies must be a list.")
-
-        # Step 5: Write the fixed configuration back to project.yaml
-        with open(project_config_path, 'w') as file:
+        # Step 5: Save the updated configuration
+        with open(file_path, 'w') as file:
             yaml.dump(config, file)
-        logger.info("Successfully repaired project.yaml")
+        logger.info("Project configuration updated successfully.")
 
     except Exception as e:
-        logger.error(f"Repairing project.yaml failed: {e}. Restoring from backup.")
-        shutil.copy(backup_path, project_config_path)
-        raise ConfigurationError("Failed to repair project.yaml, restored from backup.")
+        logger.error(f"Repair failed: {e}. Restoring from backup.")
+        shutil.copyfile(backup_file_path, file_path)
+        logger.info("Restored original configuration from backup.")
+        raise

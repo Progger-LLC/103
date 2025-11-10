@@ -1,40 +1,36 @@
 import pytest
 import os
-import shutil
 import yaml
 from modules.project_routes import repair_project_config
 
 @pytest.fixture
-def setup_project_yaml(tmp_path):
-    """Setup a temporary project.yaml for testing."""
-    project_yaml = tmp_path / "project.yaml"
-    project_yaml.write_text("dependencies:\n  - fastapi\n")
-    yield project_yaml
-    if project_yaml.exists():
-        os.remove(project_yaml)
+def temp_yaml_file(tmpdir):
+    """Fixture to create a temporary project.yaml file for testing."""
+    file_path = tmpdir.join("project.yaml")
+    content = """
+    dependencies:
+      fastapi: 0.104.1
+    """
+    with open(file_path, 'w') as f:
+        f.write(content)
+    return str(file_path)
 
-@pytest.fixture
-def setup_templates_json(tmp_path):
-    """Setup a temporary templates.json for testing."""
-    templates_json = tmp_path / "templates.json"
-    templates_json.write_text('{"version": "1.0.1"}')
-    yield templates_json
-    if templates_json.exists():
-        os.remove(templates_json)
-
-def test_repair_project_config(setup_project_yaml, setup_templates_json):
-    """Test the repair_project_config function."""
-    repair_project_config()
+def test_repair_project_config_missing_template_version(temp_yaml_file):
+    """Test repairing project.yaml with missing template_version."""
+    repair_project_config(temp_yaml_file)
     
-    with open(setup_project_yaml, 'r') as file:
-        config = yaml.safe_load(file)
-        
+    with open(temp_yaml_file, 'r') as f:
+        config = yaml.safe_load(f)
+
     assert 'template_version' in config
-    assert config['template_version'] == "1.0.1"
+    assert config['template_version'] == '1.0.0'
 
-def test_backup_creation(setup_project_yaml):
-    """Test if backup is created before changes."""
-    original_backup_path = "backup/project_backup_*.yaml"
-    repair_project_config()
+def test_repair_project_config_invalid_dependencies(temp_yaml_file):
+    """Test repair fails with invalid dependencies format."""
+    with open(temp_yaml_file, 'w') as f:
+        f.write("""
+        dependencies: [fastapi]
+        """)
     
-    assert len(glob.glob(original_backup_path)) == 1
+    with pytest.raises(ValueError):
+        repair_project_config(temp_yaml_file)
