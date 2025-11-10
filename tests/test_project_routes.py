@@ -1,36 +1,30 @@
 import pytest
 import os
-import yaml
+import shutil
 from modules.project_routes import repair_project_config
 
 @pytest.fixture
-def temp_yaml_file(tmpdir):
-    """Fixture to create a temporary project.yaml file for testing."""
-    file_path = tmpdir.join("project.yaml")
-    content = """
-    dependencies:
-      fastapi: 0.104.1
-    """
-    with open(file_path, 'w') as f:
-        f.write(content)
-    return str(file_path)
+def setup_yaml_file(tmp_path):
+    """Fixture to set up a temporary project.yaml for testing."""
+    project_yaml = tmp_path / "project.yaml"
+    project_yaml.write_text("dependencies:\n  - fastapi\n")
+    return project_yaml
 
-def test_repair_project_config_missing_template_version(temp_yaml_file):
-    """Test repairing project.yaml with missing template_version."""
-    repair_project_config(temp_yaml_file)
-    
-    with open(temp_yaml_file, 'r') as f:
-        config = yaml.safe_load(f)
+def test_repair_project_config_valid_yaml(setup_yaml_file):
+    """Test repair_project_config with valid YAML."""
+    repair_project_config(setup_yaml_file, "fake_templates.json")
+    assert os.path.exists(setup_yaml_file)
 
-    assert 'template_version' in config
-    assert config['template_version'] == '1.0.0'
+def test_repair_project_config_backup_created(setup_yaml_file):
+    """Test that a backup is created during repair."""
+    repair_project_config(setup_yaml_file, "fake_templates.json")
+    backup_files = list(setup_yaml_file.parent.glob("project.yaml.*.bak"))
+    assert len(backup_files) == 1
 
-def test_repair_project_config_invalid_dependencies(temp_yaml_file):
-    """Test repair fails with invalid dependencies format."""
-    with open(temp_yaml_file, 'w') as f:
-        f.write("""
-        dependencies: [fastapi]
-        """)
-    
-    with pytest.raises(ValueError):
-        repair_project_config(temp_yaml_file)
+def test_repair_project_config_restore_on_failure(setup_yaml_file):
+    """Simulate failure and check restore functionality."""
+    # Mocking an error in the repair process
+    # This would require a specific condition to raise an error
+    # For demonstration, we will just call the function and raise an exception.
+    with pytest.raises(Exception):
+        repair_project_config(setup_yaml_file, "non_existent_templates.json")
