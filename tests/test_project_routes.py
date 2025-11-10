@@ -1,30 +1,35 @@
 import pytest
-import os
 import yaml
+import os
 from modules.project_routes import repair_project_config
 
 @pytest.fixture
-def setup_project_yaml(tmp_path):
-    """Setup a temporary project.yaml for testing."""
-    config_data = {
-        'dependencies': {
-            'fastapi': '0.104.1',
-            'uvicorn': '0.24.0'
-        }
-    }
-    config_path = tmp_path / "project.yaml"
-    with open(config_path, 'w') as f:
-        yaml.dump(config_data, f)
-    return config_path
+def mock_project_yaml(tmp_path):
+    """Create a mock project.yaml file for testing."""
+    yaml_content = """
+    name: example_project
+    version: 1.0
+    dependencies:
+      - fastapi
+      - uvicorn
+    """
+    yaml_file = tmp_path / "project.yaml"
+    yaml_file.write_text(yaml_content)
+    return yaml_file
 
-def test_repair_project_config(setup_project_yaml):
-    """Test the repair of project.yaml."""
-    config_path = setup_project_yaml
-    repair_project_config(config_path)
-
-    # Reload the config to check changes
-    with open(config_path, 'r') as f:
+def test_repair_project_config(mock_project_yaml):
+    """Test the repair_project_config function."""
+    repair_project_config(str(mock_project_yaml))
+    
+    with open(mock_project_yaml) as f:
         config = yaml.safe_load(f)
+    
+    assert 'template_version' in config
+    assert config['template_version'] == '1.0.0'  # Check default version
+    assert config['dependencies'] == ['fastapi', 'uvicorn']  # Check dependencies preserved
 
-    assert config['template_version'] == "1.0.0"  # Check default version
-    assert 'dependencies' in config  # Ensure dependencies are intact
+def test_repair_project_config_backup(mock_project_yaml):
+    """Test that a backup is created during repair."""
+    original_file = str(mock_project_yaml)
+    repair_project_config(original_file)
+    assert os.path.exists(f"{original_file}.{datetime.now().strftime('%Y%m%d%H%M%S')}.bak")
