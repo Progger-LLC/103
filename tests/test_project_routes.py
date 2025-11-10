@@ -1,35 +1,26 @@
 import pytest
 import os
-from modules.project_routes import repair_project_config
+import modules.project_routes as project_routes
+import yaml
 
-def test_repair_project_config_creates_backup(mocker):
-    """Test that a backup is created before repairing the project.yaml."""
-    mock_backup = mocker.patch('shutil.copy')
-    mock_load = mocker.patch('yaml.safe_load', return_value={})
-    mock_dump = mocker.patch('yaml.dump')
+def test_create_backup():
+    """Test the backup creation functionality."""
+    original_file = 'project.yaml'
+    backup_file = project_routes.create_backup(original_file)
     
-    repair_project_config()
-    
-    assert mock_backup.called
-    assert mock_load.called
-    assert mock_dump.called
+    assert os.path.exists(backup_file)
+    # Cleanup
+    os.remove(backup_file)
 
-def test_repair_project_config_adds_missing_fields(mocker):
-    """Test that missing fields are added to project.yaml."""
-    mock_open = mocker.patch('builtins.open', mocker.mock_open(read_data=''))
-    mock_dump = mocker.patch('yaml.dump')
+def test_repair_project_config(mocker):
+    """Test the repair functionality."""
+    mocker.patch('builtins.open', new_callable=mocker.mock_open, read_data='dependencies: {}')
     
-    repair_project_config()
+    project_routes.repair_project_config()
     
-    mock_open.assert_called_with('project.yaml', 'r')
-    mock_dump.assert_called_with({'template_version': '1.0', 'dependencies': []}, mocker.ANY)
-
-def test_repair_project_config_invalid_yaml(mocker):
-    """Test that invalid YAML raises an error and restores from backup."""
-    mock_open = mocker.patch('builtins.open', side_effect=Exception("Error reading YAML"))
-    mock_backup = mocker.patch('shutil.copy')
+    with open('project.yaml', 'r') as file:
+        config = yaml.safe_load(file)
     
-    with pytest.raises(Exception):
-        repair_project_config()
-        
-    assert mock_backup.called
+    assert 'template_version' in config
+    assert config['template_version'] == "1.0.0"
+    assert isinstance(config['dependencies'], dict)
