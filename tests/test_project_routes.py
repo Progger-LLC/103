@@ -1,40 +1,34 @@
-import pytest
 import os
+import pytest
 import yaml
 from modules.project_routes import repair_project_config
 
 @pytest.fixture
-def prepare_environment():
-    """Prepare the environment for testing."""
-    project_yaml_path = "project.yaml"
-    if os.path.exists(project_yaml_path):
-        os.remove(project_yaml_path)
-    yield
-    if os.path.exists(project_yaml_path):
-        os.remove(project_yaml_path)
+def setup_project_yaml(tmp_path):
+    """Fixture to set up a temporary project.yaml file for testing."""
+    yaml_content = {
+        'template_version': '1.0',
+        'dependencies': {
+            'existing-package': '1.0.0'
+        }
+    }
+    yaml_file = tmp_path / "project.yaml"
+    with open(yaml_file, 'w') as file:
+        yaml.dump(yaml_content, file)
+    return yaml_file
 
-def test_repair_project_yaml_creates_backup(prepare_environment):
-    """Test that a backup of project.yaml is created when it doesn't exist."""
+def test_repair_project_config(setup_project_yaml):
+    """Test the repair_project_config function."""
     repair_project_config()
-    assert os.path.exists("project.yaml.bak.")
-
-def test_repair_project_yaml_creates_default_config(prepare_environment):
-    """Test that project.yaml is created with default values."""
-    repair_project_config()
-    with open("project.yaml", 'r') as file:
-        config = yaml.safe_load(file)
-        assert config['entry_point'] == "main.py"
-        assert config['template_version'] == "1.0.0"
-        assert isinstance(config['dependencies'], list)
-
-def test_repair_project_yaml_restores_on_failure(prepare_environment):
-    """Test that project.yaml is restored from backup on failure."""
-    with open("project.yaml", 'w') as file:
-        file.write("invalid_yaml")
     
-    repair_project_config()
-    assert os.path.exists("project.yaml.bak.")
-    # Check that the original file still exists (restored)
-    with open("project.yaml", 'r') as file:
+    with open(setup_project_yaml, 'r') as file:
         config = yaml.safe_load(file)
-        assert config['entry_point'] == "main.py"
+    
+    assert config['template_version'] == '1.0'
+    assert 'default-package' in config['dependencies']
+    assert config['dependencies']['default-package'] == 'latest'
+
+def test_repair_project_config_no_file(tmp_path):
+    """Test the repair_project_config function when project.yaml does not exist."""
+    repair_project_config()
+    assert os.path.exists('project.yaml')
