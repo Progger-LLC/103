@@ -1,26 +1,27 @@
 import os
 import pytest
 import yaml
-from modules.project_routes import repair_project_config
+from modules.project_routes import fix_project_yaml
 
 @pytest.fixture
-def setup_project_yaml(tmp_path):
-    """Setup a temporary project.yaml for testing."""
-    project_yaml = tmp_path / "project.yaml"
-    project_yaml.write_text("dependencies:\n  - package1\n  - package2\n")
-    yield project_yaml
-    if project_yaml.exists():
-        project_yaml.unlink()
+def setup_yaml_file(tmp_path):
+    """Fixture to create a temporary project.yaml file."""
+    yaml_content = {'dependencies': ['example-package']}
+    yaml_file = tmp_path / "project.yaml"
+    with open(yaml_file, 'w') as f:
+        yaml.dump(yaml_content, f)
+    yield yaml_file
 
-def test_repair_project_config_valid(setup_project_yaml):
-    """Test repairing a valid project.yaml."""
-    repair_project_config()
-    with open(setup_project_yaml, 'r') as file:
-        data = yaml.safe_load(file)
-    assert 'template_version' in data
-    assert isinstance(data['dependencies'], list)
+def test_fix_project_yaml_creates_file_when_not_exists(setup_yaml_file):
+    """Test that fix_project_yaml creates a new project.yaml if it doesn't exist."""
+    os.remove(setup_yaml_file)
+    fix_project_yaml()
+    assert os.path.exists(setup_yaml_file)
 
-def test_repair_project_config_no_file(tmp_path):
-    """Test repair when project.yaml does not exist."""
-    repair_project_config()
-    assert not (tmp_path / "project.yaml").exists()
+def test_fix_project_yaml_updates_fields(setup_yaml_file):
+    """Test that fix_project_yaml updates project.yaml with required fields."""
+    fix_project_yaml()
+    with open(setup_yaml_file, 'r') as f:
+        config = yaml.safe_load(f)
+        assert 'template_version' in config
+        assert 'dependencies' in config
