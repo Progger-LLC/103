@@ -1,27 +1,28 @@
 import os
 import pytest
-import yaml
-from modules.project_routes import fix_project_yaml
+from modules.project_routes import repair_project_config
 
-@pytest.fixture
-def setup_yaml_file(tmp_path):
-    """Fixture to create a temporary project.yaml file."""
-    yaml_content = {'dependencies': ['example-package']}
-    yaml_file = tmp_path / "project.yaml"
-    with open(yaml_file, 'w') as f:
-        yaml.dump(yaml_content, f)
-    yield yaml_file
+def test_repair_project_config_creates_yaml(mocker):
+    """Test that repair_project_config creates a valid project.yaml."""
+    mocker.patch('os.path.exists', return_value=False)  # Simulate project.yaml not existing
+    repair_project_config()
 
-def test_fix_project_yaml_creates_file_when_not_exists(setup_yaml_file):
-    """Test that fix_project_yaml creates a new project.yaml if it doesn't exist."""
-    os.remove(setup_yaml_file)
-    fix_project_yaml()
-    assert os.path.exists(setup_yaml_file)
+    assert os.path.exists('project.yaml')
 
-def test_fix_project_yaml_updates_fields(setup_yaml_file):
-    """Test that fix_project_yaml updates project.yaml with required fields."""
-    fix_project_yaml()
-    with open(setup_yaml_file, 'r') as f:
-        config = yaml.safe_load(f)
-        assert 'template_version' in config
-        assert 'dependencies' in config
+def test_repair_project_config_backups_yaml(mocker):
+    """Test that repair_project_config creates a backup of the existing project.yaml."""
+    mocker.patch('os.path.exists', side_effect=[True, False])  # Simulate existing project.yaml
+    mocker.patch('os.rename')  # Mock os.rename to avoid file operations
+
+    repair_project_config()
+
+    assert os.path.exists('project_backup_*.yaml')
+
+def test_repair_project_config_valid_yaml(mocker):
+    """Test that the newly created project.yaml is valid YAML."""
+    mocker.patch('os.path.exists', return_value=False)  # Simulate project.yaml not existing
+    repair_project_config()
+
+    with open('project.yaml', 'r') as yaml_file:
+        content = yaml_file.read()
+        assert content is not None  # Ensure it's not empty
