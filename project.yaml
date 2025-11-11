@@ -2,6 +2,9 @@ name: "Project 103"
 description: "FastAPI web application with red homepage"
 type: "fastapi"
 version: "1.0.0"
+template: "fastapi"
+template_version: "2.10.0"
+python_version: "3.13"
 
 framework:
   name: "fastapi"
@@ -9,10 +12,8 @@ framework:
 
 python:
   version: "3.13"
-  
-entry_point: "main.py"
 
-dependencies:
+entry_point: "main.py"dependencies:
   - "fastapi==0.104.1"
   - "uvicorn[standard]==0.24.0"
   - "pydantic==2.10.3"
