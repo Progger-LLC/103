@@ -1,31 +1,30 @@
 import pytest
 import os
-import yaml
+import shutil
 from modules.project_routes import repair_project_config
 
 @pytest.fixture
-def setup_project_yaml(tmp_path):
-    """Fixture to set up a sample project.yaml for testing."""
-    project_yaml_content = """
-    dependencies:
-      some_dependency: 1.0.0
+def setup_yaml_file(tmp_path):
+    """Fixture to set up a temporary project.yaml file."""
+    yaml_content = """
+    required_field_1: old_value
     """
-    project_yaml_path = tmp_path / "project.yaml"
-    project_yaml_path.write_text(project_yaml_content)
-    return project_yaml_path
+    yaml_file = tmp_path / "project.yaml"
+    yaml_file.write_text(yaml_content)
+    yield yaml_file
+    os.remove(yaml_file)
 
-def test_repair_project_config(setup_project_yaml):
-    """Test repair_project_config function."""
-    # Ensure the initial file is valid
-    assert os.path.exists(setup_project_yaml), "project.yaml should exist"
-
-    # Perform the repair
+def test_repair_project_config(setup_yaml_file):
+    """Test the repair_project_config function."""
+    # Move the yaml file to the expected location
+    shutil.move(str(setup_yaml_file), "project.yaml")
+    
+    # Call the repair function
     repair_project_config()
-
-    # Load the repaired project.yaml
-    with open(setup_project_yaml, 'r') as file:
+    
+    # Check if the file was repaired correctly
+    with open("project.yaml", 'r') as file:
         config = yaml.safe_load(file)
-
-    # Validate the changes
-    assert 'template_version' in config, "template_version should be added"
-    assert isinstance(config['dependencies'], dict), "Dependencies should be a dictionary"
+    
+    assert 'required_field_2' in config
+    assert config['required_field_2'] == "default_value_2"
