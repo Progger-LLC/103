@@ -1,19 +1,15 @@
 from fastapi import FastAPI
-from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from fastapi import Request
-import logging
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+# Initialize the FastAPI application
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
 
+# Set up the Jinja2 template engine
+templates = Jinja2Templates(directory="templates")
 
 @app.get("/home", response_class=HTMLResponse)
 async def read_home(request: Request) -> HTMLResponse:
-    """Render the home page with a red background and prominent text."""
-    logger.info("Home page accessed.")
+    """Renders the home page with a red background and prominent text."""
     return templates.TemplateResponse("home.html", {"request": request})
